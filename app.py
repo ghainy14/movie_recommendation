@@ -2,42 +2,46 @@ import streamlit as st
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
+st.set_page_config(page_title="Movie Recommender", layout="wide")
+
 st.title("🎬 Movie Recommender System")
 
-# Load datasets
-movies = pd.read_csv("movies.csv")
-ratings = pd.read_csv("ratings.csv")
+@st.cache_data
+def load_data():
+    movies = pd.read_csv("movies.csv")
+    ratings = pd.read_csv("ratings.csv")
+    return movies, ratings
+
+movies, ratings = load_data()
 
 # Merge datasets
 data = pd.merge(ratings, movies, on="movieId")
 
-# Create user-movie matrix
-user_movie_matrix = data.pivot_table(index='userId', columns='title', values='rating')
+# Create matrix
+user_movie_matrix = data.pivot_table(index='userId', columns='title', values='rating').fillna(0)
 
-# Fill missing values
-user_movie_matrix = user_movie_matrix.fillna(0)
-
-# Compute similarity between movies
+# Compute similarity
 movie_similarity = cosine_similarity(user_movie_matrix.T)
-movie_similarity_df = pd.DataFrame(movie_similarity,
-                                   index=user_movie_matrix.columns,
-                                   columns=user_movie_matrix.columns)
+movie_similarity_df = pd.DataFrame(
+    movie_similarity,
+    index=user_movie_matrix.columns,
+    columns=user_movie_matrix.columns
+)
 
-# Movie selection
-movie_list = movies['title'].values
-selected_movie = st.selectbox("Select a movie you like:", movie_list)
+# UI
+selected_movie = st.selectbox("Select a movie you like:", movies['title'].values)
 
-# Recommendation function
-def recommend_movies(movie_name, num_recommendations=5):
-    similar_scores = movie_similarity_df[movie_name].sort_values(ascending=False)
-    recommendations = similar_scores.iloc[1:num_recommendations+1]
-    return recommendations.index
+def recommend_movies(movie_name, n=5):
+    similar = movie_similarity_df[movie_name].sort_values(ascending=False)
+    return similar.iloc[1:n+1].index
 
-# Show recommendations
-if st.button("Recommend Movies"):
-    recommendations = recommend_movies(selected_movie)
+if st.button("Recommend"):
+    try:
+        recs = recommend_movies(selected_movie)
 
-    st.subheader("Recommended Movies For You")
+        st.subheader("🎯 Recommended Movies")
+        for i, movie in enumerate(recs, 1):
+            st.write(f"{i}. {movie}")
 
-    for movie in recommendations:
-        st.write(movie)
+    except Exception as e:
+        st.error("Something went wrong. Try another movie.")
