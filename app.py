@@ -26,3 +26,28 @@ if st.button("Recommend Top Movies"):
     
     for _, row in top_movies.iterrows():
         st.write(f"🎬 {row['title']} ({round(row['AvgRating'],2)})")
+from sklearn.metrics.pairwise import cosine_similarity
+
+@st.cache_data
+def compute_similarity(movies):
+    subset = movies.head(500)  # VERY IMPORTANT (limit size)
+    genre_dummies = subset['genres'].str.get_dummies(sep='|')
+    similarity = cosine_similarity(genre_dummies)
+    return pd.DataFrame(similarity, index=subset['movieId'], columns=subset['movieId']), subset
+
+similarity_df, subset_movies = compute_similarity(movies)
+
+movie_list = subset_movies['title'].values
+selected_movie = st.selectbox("Select a movie you like:", movie_list)
+
+if st.button("Get Similar Movies"):
+    movie_id = subset_movies[subset_movies['title'] == selected_movie]['movieId'].values[0]
+    
+    sim_scores = similarity_df[movie_id].sort_values(ascending=False).iloc[1:6]
+    rec_ids = sim_scores.index
+    
+    recs = subset_movies[subset_movies['movieId'].isin(rec_ids)]
+    
+    st.subheader("Recommended Movies")
+    for _, row in recs.iterrows():
+        st.write(row['title'])
