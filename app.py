@@ -6,15 +6,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 
 st.title("🎬 Movie Recommender System")
-st.markdown("Hybrid Recommendation System (Clustering + Content-Based Filtering)")
 
 # =========================
-# LOAD DATA
+# LOAD DATA (REDUCED SIZE)
 # =========================
 @st.cache_data
 def load_data():
-    movies = pd.read_csv("movies.csv")
-    ratings = pd.read_csv("ratings.csv")
+    movies = pd.read_csv("movies.csv").head(3000)
+    ratings = pd.read_csv("ratings.csv").head(50000)
 
     # Extract year
     movies['Year'] = movies['title'].str.extract(r'\((\d{4})\)').astype(float)
@@ -25,89 +24,85 @@ def load_data():
 
     movies = movies.merge(movie_stats, on='movieId', how='left')
     movies['AvgRating'] = movies['AvgRating'].fillna(0)
-    movies['TotalRatings'] = movies['TotalRatings'].fillna(0)
 
     return movies, ratings
 
 movies, ratings = load_data()
 
 # =========================
-# USER CLUSTERING
+# USER CLUSTERING (SAMPLED)
 # =========================
 @st.cache_data
 def cluster_users(ratings):
-    user_movie_matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
-    kmeans = KMeans(n_clusters=5, random_state=42)
-    clusters = kmeans.fit_predict(user_movie_matrix)
+    sample = ratings.sample(20000, random_state=42)
 
-    user_clusters = pd.DataFrame({
-        'userId': user_movie_matrix.index,
+    user_movie = sample.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+
+    kmeans = KMeans(n_clusters=5, random_state=42, n_init=10)
+    clusters = kmeans.fit_predict(user_movie)
+
+    return pd.DataFrame({
+        'userId': user_movie.index,
         'Cluster': clusters
     })
-
-    return user_clusters
 
 user_clusters = cluster_users(ratings)
 
 # =========================
-# CONTENT-BASED SIMILARITY
+# CONTENT SIMILARITY (LIMITED)
 # =========================
 @st.cache_data
 def compute_similarity(movies):
-    genre_dummies = movies['genres'].str.get_dummies(sep='|')
-    similarity_matrix = cosine_similarity(genre_dummies)
-    return pd.DataFrame(similarity_matrix, index=movies['movieId'], columns=movies['movieId'])
+    subset = movies.head(2000)
+    genre_dummies = subset['genres'].str.get_dummies(sep='|')
+
+    similarity = cosine_similarity(genre_dummies)
+
+    return pd.DataFrame(similarity, index=subset['movieId'], columns=subset['movieId'])
 
 similarity_df = compute_similarity(movies)
 
 # =========================
-# RECOMMENDATION FUNCTION
+# RECOMMENDER
 # =========================
 def recommend(user_id, top_n=5):
-    user_rated = ratings[ratings['userId'] == user_id]
+    user_data = ratings[ratings['userId'] == user_id]
 
-    if user_rated.empty:
+    if user_data.empty:
         return movies.sort_values(by='AvgRating', ascending=False).head(top_n)
 
-    # Get top rated movie
-    top_movie_id = user_rated.sort_values('rating', ascending=False).iloc[0]['movieId']
+    top_movie = user_data.sort_values('rating', ascending=False).iloc[0]['movieId']
 
-    # Similar movies
-    sim_scores = similarity_df[top_movie_id].sort_values(ascending=False)
+    if top_movie not in similarity_df.columns:
+        return movies.sort_values(by='AvgRating', ascending=False).head(top_n)
 
-    # Remove watched movies
-    sim_scores = sim_scores.drop(user_rated['movieId'].values, errors='ignore')
+    sim_scores = similarity_df[top_movie].sort_values(ascending=False)
+
+    sim_scores = sim_scores.drop(user_data['movieId'].values, errors='ignore')
 
     top_ids = sim_scores.head(top_n).index
 
     return movies[movies['movieId'].isin(top_ids)][['title', 'genres', 'AvgRating']]
 
 # =========================
-# SIDEBAR (USER INPUT)
+# UI
 # =========================
-st.sidebar.header("User Options")
-
-user_id = st.sidebar.number_input("Enter User ID", min_value=1, max_value=int(ratings['userId'].max()), value=1)
+user_id = st.sidebar.number_input(
+    "Enter User ID",
+    min_value=1,
+    max_value=int(ratings['userId'].max()),
+    value=1
+)
 
 top_n = st.sidebar.slider("Number of recommendations", 3, 10, 5)
 
-# =========================
-# MAIN ACTION
-# =========================
 if st.button("🎯 Get Recommendations"):
     recs = recommend(user_id, top_n)
 
-    st.subheader(f"Top {top_n} Recommendations for User {user_id}")
+    st.subheader("Recommended Movies")
 
-    for i, row in recs.iterrows():
-        st.markdown(f"**{row['title']}**")
+    for _, row in recs.iterrows():
+        st.write(f"🎬 {row['title']}")
         st.write(f"Genre: {row['genres']}")
         st.write(f"⭐ Rating: {round(row['AvgRating'],2)}")
         st.write("---")
-
-# =========================
-# OPTIONAL: SHOW CLUSTERS
-# =========================
-if st.checkbox("Show User Cluster Distribution"):
-    st.subheader("User Clusters")
-    st.bar_chart(user_clusters['Cluster'].value_counts())
