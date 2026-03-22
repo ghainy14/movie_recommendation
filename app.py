@@ -97,7 +97,7 @@ if st.button("Get Similar Movies"):
     
     st.subheader("🎥 Recommended Movies")
 
-for _, row in top_movies.iterrows():
+for _, row in recs.iterrows():
     st.markdown(f"""
         <div class="movie-card">
             <h4>{row['title']}</h4>
