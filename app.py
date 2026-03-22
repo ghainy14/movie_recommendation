@@ -1,11 +1,11 @@
+
+import streamlit as st
+import pandas as pd
 st.set_page_config(
     page_title="Movie Recommender 🎬",
     page_icon="🎬",
     layout="wide"
 )
-import streamlit as st
-import pandas as pd
-
 st.title("🎬 Movie Recommender System")
 @st.cache_data
 def load_data():
