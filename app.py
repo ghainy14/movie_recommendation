@@ -42,7 +42,6 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 st.title("🎬 Movie Recommender System")
-st.markdown("<h1 style='text-align: center;'>🎬 Movie Recommender System</h1>", unsafe_allow_html=True)
 @st.cache_data
 def load_data():
     movies = pd.read_csv("movies.csv", nrows=1000)
