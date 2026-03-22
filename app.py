@@ -4,7 +4,7 @@ st.markdown("""
 <style>
 /* Main background */
 .stApp {
-    background-color: #0E1117;
+    background-color: #ff1f1f;
     color: white;
 }
 
@@ -25,7 +25,7 @@ section[data-testid="stSidebar"] {
 
 /* Button hover */
 .stButton>button:hover {
-    background-color: #ff1f1f;
+    background-color: #0E1117;
 }
 
 /* Titles */
