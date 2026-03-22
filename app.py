@@ -1,6 +1,46 @@
 import streamlit as st
 import pandas as pd
+st.markdown("""
+<style>
+/* Main background */
+.stApp {
+    background-color: #0E1117;
+    color: white;
+}
 
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #1c1f26;
+}
+
+/* Buttons */
+.stButton>button {
+    background-color: #FF4B4B;
+    color: white;
+    border-radius: 10px;
+    height: 3em;
+    width: 100%;
+    font-size: 16px;
+}
+
+/* Button hover */
+.stButton>button:hover {
+    background-color: #ff1f1f;
+}
+
+/* Titles */
+h1, h2, h3 {
+    color: #FFD700;
+}
+
+/* Cards effect */
+.css-1r6slb0 {
+    background-color: #262730;
+    padding: 15px;
+    border-radius: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
 st.title("🎬 Movie Recommender System")
 
 @st.cache_data
