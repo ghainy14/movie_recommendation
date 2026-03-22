@@ -42,11 +42,6 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 st.title("🎬 Movie Recommender System")
-st.markdown(f"""
-<div style='background-color:#262730; padding:10px; border-radius:10px; margin-bottom:10px'>
-    🎬 <b>{row['title']}</b>
-</div>
-""", unsafe_allow_html=True)
 st.markdown("<h1 style='text-align: center;'>🎬 Movie Recommender System</h1>", unsafe_allow_html=True)
 @st.cache_data
 def load_data():
