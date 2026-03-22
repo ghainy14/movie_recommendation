@@ -94,13 +94,12 @@ if st.button("Get Similar Movies"):
     rec_ids = sim_scores.index
     
     recs = subset_movies[subset_movies['movieId'].isin(rec_ids)]
-    
 st.subheader("🎥 Recommended Movies")
-    for _, row in top_movies.iterrows():
-        st.markdown(f"""
+
+for _, row in top_movies.iterrows():
+    st.markdown(f"""
         <div class="movie-card">
             <h4>{row['title']}</h4>
             <p>⭐ Rating: {round(row['AvgRating'],2)}</p>
         </div>
-        """, unsafe_allow_html=True)
-
+    """, unsafe_allow_html=True)    
