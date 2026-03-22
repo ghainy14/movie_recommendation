@@ -95,5 +95,5 @@ if st.button("Get Similar Movies"):
     
     recs = subset_movies[subset_movies['movieId'].isin(rec_ids)]
 st.subheader("Recommended Movies")
-    for _, row in recs.iterrows():
-        st.write(row['title'])
+for _, row in recs.iterrows():
+      st.write(row['title'])
