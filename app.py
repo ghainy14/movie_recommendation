@@ -1,11 +1,54 @@
 
 import streamlit as st
 import pandas as pd
+
+
+# Page config
 st.set_page_config(
-    page_title="Movie Recommender 🎬",
+    page_title="Movie Recommender",
     page_icon="🎬",
     layout="wide"
 )
+
+# Custom CSS styling
+st.markdown("""
+    <style>
+    /* Background */
+    .stApp {
+        background-color: #0E1117;
+        color: white;
+    }
+
+    /* Title */
+    h1 {
+        color: #FF4B4B;
+        text-align: center;
+    }
+
+    /* Buttons */
+    .stButton>button {
+        background-color: #FF4B4B;
+        color: white;
+        border-radius: 10px;
+        height: 3em;
+        width: 100%;
+        font-size: 16px;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #1C1F26;
+    }
+
+    /* Cards (for movie results) */
+    .movie-card {
+        background-color: #262730;
+        padding: 10px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 st.title("🎬 Movie Recommender System")
 @st.cache_data
 def load_data():
@@ -52,6 +95,13 @@ if st.button("Get Similar Movies"):
     
     recs = subset_movies[subset_movies['movieId'].isin(rec_ids)]
     
-    st.subheader("Recommended Movies")
-    for _, row in recs.iterrows():
-        st.write(row['title'])
+    st.subheader("🎥 Recommended Movies")
+
+for _, row in top_movies.iterrows():
+    st.markdown(f"""
+        <div class="movie-card">
+            <h4>{row['title']}</h4>
+            <p>⭐ Rating: {round(row['AvgRating'],2)}</p>
+        </div>
+    """, unsafe_allow_html=True)
+
