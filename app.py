@@ -1,105 +1,179 @@
-
 import streamlit as st
 import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
-
-# Page config
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
 st.set_page_config(
     page_title="Movie Recommender",
     page_icon="🎬",
     layout="wide"
 )
 
-# Custom CSS styling
+# -----------------------------
+# CUSTOM CSS
+# -----------------------------
 st.markdown("""
-    <style>
-    /* Background */
-    .stApp {
-        background-color: #0E1117;
-        color: white;
-    }
+<style>
+.stApp {
+    background-color: #0E1117;
+    color: white;
+}
 
-    /* Title */
-    h1 {
-        color: #FF4B4B;
-        text-align: center;
-    }
+h1 {
+    color: #FF4B4B;
+    text-align: center;
+}
 
-    /* Buttons */
-    .stButton>button {
-        background-color: #FF4B4B;
-        color: white;
-        border-radius: 10px;
-        height: 3em;
-        width: 100%;
-        font-size: 16px;
-    }
+.stButton>button {
+    background-color: #FF4B4B;
+    color: white;
+    border-radius: 10px;
+    height: 3em;
+    width: 100%;
+    font-size: 16px;
+}
 
-    /* Sidebar */
-    section[data-testid="stSidebar"] {
-        background-color: #1C1F26;
-    }
+section[data-testid="stSidebar"] {
+    background-color: #1C1F26;
+}
 
-    /* Cards (for movie results) */
-    .movie-card {
-        background-color: #262730;
-        padding: 10px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-    }
-    </style>
+.movie-card {
+    background-color: #262730;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+</style>
 """, unsafe_allow_html=True)
+
 st.title("🎬 Movie Recommender System")
+
+# -----------------------------
+# LOAD DATA
+# -----------------------------
 @st.cache_data
 def load_data():
-    movies = pd.read_csv("movies.csv", nrows=1000)
-    ratings = pd.read_csv("ratings.csv", nrows=5000)
-    
+    movies = pd.read_csv("movies.csv")
+    ratings = pd.read_csv("ratings.csv")
+
+    # Compute stats
     movie_stats = ratings.groupby('movieId')['rating'].agg(['mean','count']).reset_index()
-    movie_stats.rename(columns={'mean':'AvgRating', 'count':'TotalRatings'}, inplace=True)
-    
+    movie_stats.columns = ['movieId','AvgRating','TotalRatings']
+
     movies = movies.merge(movie_stats, on='movieId', how='left')
     movies['AvgRating'] = movies['AvgRating'].fillna(0)
-    
-    return movies
 
-movies = load_data()
+    return movies, ratings
 
-st.sidebar.title("Options")
-top_n = st.sidebar.slider("Number of movies", 3, 10, 5)
+movies, ratings = load_data()
 
-if st.button("Recommend Top Movies"):
-    top_movies = movies.sort_values(by='AvgRating', ascending=False).head(top_n)
-    
-    for _, row in top_movies.iterrows():
-        st.write(f"🎬 {row['title']} ({round(row['AvgRating'],2)})")
-from sklearn.metrics.pairwise import cosine_similarity
-
+# -----------------------------
+# CONTENT-BASED MODEL
+# -----------------------------
 @st.cache_data
-def compute_similarity(movies):
-    subset = movies.head(500)  # VERY IMPORTANT (limit size)
-    genre_dummies = subset['genres'].str.get_dummies(sep='|')
-    similarity = cosine_similarity(genre_dummies)
-    return pd.DataFrame(similarity, index=subset['movieId'], columns=subset['movieId']), subset
+def compute_content_model(movies):
+    movies['genres_clean'] = movies['genres'].str.replace('|', ' ', regex=False)
+    genre_matrix = movies['genres_clean'].str.get_dummies(sep=' ')
+    similarity = cosine_similarity(genre_matrix)
+    return similarity
 
-similarity_df, subset_movies = compute_similarity(movies)
+cosine_sim = compute_content_model(movies)
 
-movie_list = subset_movies['title'].values
-selected_movie = st.selectbox("Select a movie you like:", movie_list)
+# -----------------------------
+# COLLABORATIVE MODEL
+# -----------------------------
+@st.cache_data
+def compute_user_model(ratings):
+    user_movie_matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+    user_similarity = cosine_similarity(user_movie_matrix)
+    return user_movie_matrix, user_similarity
 
-if st.button("Get Similar Movies"):
-    movie_id = subset_movies[subset_movies['title'] == selected_movie]['movieId'].values[0]
-    
-    sim_scores = similarity_df[movie_id].sort_values(ascending=False).iloc[1:6]
-    rec_ids = sim_scores.index
-    
-    recs = subset_movies[subset_movies['movieId'].isin(rec_ids)]
+user_movie_matrix, user_similarity = compute_user_model(ratings)
 
-    st.subheader("🎥 Recommended Movies")
+# -----------------------------
+# SIDEBAR OPTIONS
+# -----------------------------
+st.sidebar.title("⚙️ Options")
 
-    for _, row in recs.iterrows():
+option = st.sidebar.selectbox(
+    "Choose Recommendation Type",
+    ["Top Movies", "Movie-Based", "User-Based"]
+)
+
+top_n = st.sidebar.slider("Number of recommendations", 3, 15, 5)
+
+# -----------------------------
+# 1. TOP MOVIES
+# -----------------------------
+if option == "Top Movies":
+    st.subheader("⭐ Top Rated Movies")
+
+    top_movies = movies.sort_values(by='AvgRating', ascending=False).head(top_n)
+
+    for _, row in top_movies.iterrows():
         st.markdown(f"""
-            <div class="movie-card">
-                <h4>{row['title']}</h4>
-            </div>
+        <div class="movie-card">
+            <h4>🎬 {row['title']}</h4>
+            <p>⭐ Rating: {round(row['AvgRating'],2)}</p>
+        </div>
         """, unsafe_allow_html=True)
+
+# -----------------------------
+# 2. MOVIE-BASED
+# -----------------------------
+elif option == "Movie-Based":
+    st.subheader("🎥 Find Similar Movies")
+
+    movie_list = movies['title'].values
+    selected_movie = st.selectbox("Select a movie:", movie_list)
+
+    if st.button("Recommend Similar Movies"):
+        idx = movies[movies['title'] == selected_movie].index[0]
+
+        sim_scores = list(enumerate(cosine_sim[idx]))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:top_n+1]
+
+        movie_indices = [i[0] for i in sim_scores]
+        recs = movies.iloc[movie_indices]
+
+        for _, row in recs.iterrows():
+            st.markdown(f"""
+            <div class="movie-card">
+                <h4>🎬 {row['title']}</h4>
+            </div>
+            """, unsafe_allow_html=True)
+
+# -----------------------------
+# 3. USER-BASED
+# -----------------------------
+elif option == "User-Based":
+    st.subheader("👤 Personalized Recommendations")
+
+    user_id = st.number_input("Enter User ID", min_value=1, step=1)
+
+    if st.button("Recommend for User"):
+        if user_id not in user_movie_matrix.index:
+            st.error("User not found!")
+        else:
+            user_idx = list(user_movie_matrix.index).index(user_id)
+            sim_scores = user_similarity[user_idx]
+
+            user_ratings = user_movie_matrix.iloc[user_idx]
+            unrated_movies = user_ratings[user_ratings == 0].index
+
+            scores = {
+                movie: sim_scores @ user_movie_matrix[movie] / (sim_scores.sum() + 1e-8)
+                for movie in unrated_movies
+            }
+
+            recommended_ids = sorted(scores, key=scores.get, reverse=True)[:top_n]
+            recs = movies[movies['movieId'].isin(recommended_ids)]
+
+            for _, row in recs.iterrows():
+                st.markdown(f"""
+                <div class="movie-card">
+                    <h4>🎬 {row['title']}</h4>
+                </div>
+                """, unsafe_allow_html=True)
