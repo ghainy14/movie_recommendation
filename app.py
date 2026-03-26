@@ -42,7 +42,7 @@ section[data-testid="stSidebar"] {
     background-color: #262730;
     padding: 12px;
     border-radius: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -57,10 +57,10 @@ def load_data():
     movies = pd.read_csv("movies.csv")
     ratings = pd.read_csv("ratings.csv")
 
-    movie_stats = ratings.groupby('movieId')['rating'].agg(['mean','count']).reset_index()
-    movie_stats.columns = ['movieId','AvgRating','TotalRatings']
+    stats = ratings.groupby('movieId')['rating'].agg(['mean','count']).reset_index()
+    stats.columns = ['movieId','AvgRating','TotalRatings']
 
-    movies = movies.merge(movie_stats, on='movieId', how='left')
+    movies = movies.merge(stats, on='movieId', how='left')
     movies['AvgRating'] = movies['AvgRating'].fillna(0)
 
     return movies, ratings
@@ -71,41 +71,41 @@ movies, ratings = load_data()
 # CONTENT MODEL
 # -----------------------------
 @st.cache_data
-def content_model(movies):
+def compute_content_model(movies):
     movies['genres_clean'] = movies['genres'].str.replace('|', ' ', regex=False)
     genre_matrix = movies['genres_clean'].str.get_dummies(sep=' ')
     similarity = cosine_similarity(genre_matrix)
     return similarity
 
-cosine_sim = content_model(movies)
+cosine_sim = compute_content_model(movies)
 
 # -----------------------------
 # USER MODEL
 # -----------------------------
 @st.cache_data
-def user_model(ratings):
-    user_movie_matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
-    user_similarity = cosine_similarity(user_movie_matrix)
-    return user_movie_matrix, user_similarity
+def compute_user_model(ratings):
+    matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+    similarity = cosine_similarity(matrix)
+    return matrix, similarity
 
-user_movie_matrix, user_similarity = user_model(ratings)
+user_movie_matrix, user_similarity = compute_user_model(ratings)
 
 # -----------------------------
 # SIDEBAR
 # -----------------------------
-st.sidebar.title("⚙️ Recommendation Type")
+st.sidebar.title("⚙️ Options")
 
 option = st.sidebar.selectbox(
-    "Choose Option",
+    "Choose Recommendation Type",
     ["Top Movies", "Movie-Based", "User-Based"]
 )
 
 top_n = st.sidebar.slider("Number of recommendations", 3, 15, 5)
 
 # -----------------------------
-# DISPLAY FUNCTION (CARD)
+# DISPLAY FUNCTION
 # -----------------------------
-def show_movies(df):
+def display_movies(df):
     for _, row in df.iterrows():
         st.markdown(f"""
         <div class="movie-card">
@@ -116,16 +116,16 @@ def show_movies(df):
         """, unsafe_allow_html=True)
 
 # -----------------------------
-# 1. TOP MOVIES
+# TOP MOVIES
 # -----------------------------
 if option == "Top Movies":
     st.subheader("⭐ Top Rated Movies")
 
     top_movies = movies.sort_values(by='AvgRating', ascending=False).head(top_n)
-    show_movies(top_movies)
+    display_movies(top_movies)
 
 # -----------------------------
-# 2. MOVIE-BASED
+# MOVIE-BASED
 # -----------------------------
 elif option == "Movie-Based":
     st.subheader("🎥 Find Similar Movies")
@@ -141,19 +141,19 @@ elif option == "Movie-Based":
         movie_indices = [i[0] for i in sim_scores]
         recs = movies.iloc[movie_indices]
 
-        show_movies(recs)
+        display_movies(recs)
 
 # -----------------------------
-# 3. USER-BASED
+# USER-BASED
 # -----------------------------
 elif option == "User-Based":
-    st.subheader("👤 Recommend for a User")
+    st.subheader("👤 Personalized Recommendations")
 
     user_id = st.number_input("Enter User ID", min_value=1, step=1)
 
-    if st.button("Get Recommendations"):
+    if st.button("Recommend for User"):
         if user_id not in user_movie_matrix.index:
-            st.error("❌ User not found!")
+            st.error("❌ User not found in dataset")
         else:
             user_idx = list(user_movie_matrix.index).index(user_id)
             sim_scores = user_similarity[user_idx]
@@ -169,4 +169,4 @@ elif option == "User-Based":
             recommended_ids = sorted(scores, key=scores.get, reverse=True)[:top_n]
             recs = movies[movies['movieId'].isin(recommended_ids)]
 
-            show_movies(recs)
+            display_movies(recs)
