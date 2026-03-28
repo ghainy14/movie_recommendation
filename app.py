@@ -15,7 +15,7 @@ theme = st.sidebar.radio("Choose Theme", ["Dark", "Light"])
 
 if theme == "Dark":
     bg_color = "#0E1117"
-    card_color = "#26273"
+    card_color = "#262730"
     text_color = "white"
 else:
     bg_color = "#F5F5F5"
@@ -23,21 +23,18 @@ else:
     text_color = "black"
 
 # Apply theme
-st.markdown(f"""
-    <style>
-    .stApp {{
-        background-color: {bg_color};
-        color: {text_color};
-    }}
-    .movie-card {{
-        background-color: {card_color};
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        color: {text_color};
-        box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
-    }}
-    </style>
+st.markdown("""
+<style>
+.stButton > button {
+    background-color: #FF4B4B !important;
+    color: #FF4B4B !important;
+    border: 2px solid #FF4B4B !important;
+    border-radius: 10px;
+    height: 3em;
+    width: 100%;
+    font-size: 16px;
+}
+</style>
 """, unsafe_allow_html=True)
 
 st.title("🎬 Smart Movie Recommender System")
