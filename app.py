@@ -33,8 +33,14 @@ FactRatings, DimMovie, DimUser = load_data()
 @st.cache_data
 def build_models(FactRatings, DimMovie):
 
-    # USER-ITEM MATRIX (Collaborative)
-    user_movie_matrix = FactRatings.pivot_table(
+    # 🔥 LIMIT SIZE (VERY IMPORTANT)
+    DimMovie_small = DimMovie.head(1000)
+    FactRatings_small = FactRatings[
+        FactRatings['movieid'].isin(DimMovie_small['movieid'])
+    ]
+
+    # USER MODEL
+    user_movie_matrix = FactRatings_small.pivot_table(
         index='userid',
         columns='movieid',
         values='rating',
@@ -43,16 +49,14 @@ def build_models(FactRatings, DimMovie):
 
     user_similarity = cosine_similarity(user_movie_matrix)
 
-    # CONTENT-BASED (Genres)
-    count = CountVectorizer(tokenizer=lambda x: x.split('|'))
-    genre_matrix = count.fit_transform(DimMovie['genres'].fillna(""))
+    # CONTENT MODEL (SAFE)
+    count = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
 
-    cosine_sim = cosine_similarity(genre_matrix, genre_matrix)
+    genre_matrix = count.fit_transform(DimMovie_small['genres'].fillna(""))
 
-    return user_movie_matrix, user_similarity, cosine_sim
+    cosine_sim = cosine_similarity(genre_matrix)
 
-user_movie_matrix, user_similarity, cosine_sim = build_models(FactRatings, DimMovie)
-
+    return user_movie_matrix, user_similarity, cosine_sim, DimMovie_small
 # -----------------------------
 # HELPER: DISPLAY MOVIES
 # -----------------------------
