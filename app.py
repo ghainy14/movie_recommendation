@@ -4,28 +4,30 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 
 # -----------------------------
-# PAGE CONFIG
+# CONFIG
 # -----------------------------
 st.set_page_config(page_title="🎬 Smart Movie Recommender", layout="wide")
 st.title("🎬 Smart Movie Recommender System")
 
 # -----------------------------
-# LOAD DATA (SAFE)
+# LOAD DATA
 # -----------------------------
 @st.cache_data
 def load_data():
     FactRatings = pd.read_csv("FactRatings.csv")
     DimMovie = pd.read_csv("DimMovie.csv")
-    DimUser = pd.read_csv("DimUser.csv")
 
-    # 🔥 FIX: normalize column names
+    # Normalize columns
     FactRatings.columns = FactRatings.columns.str.strip().str.lower()
     DimMovie.columns = DimMovie.columns.str.strip().str.lower()
-    DimUser.columns = DimUser.columns.str.strip().str.lower()
 
-    return FactRatings, DimMovie, DimUser
+    # 🔥 LIMIT SIZE (prevents crash)
+    DimMovie = DimMovie.head(800)
+    FactRatings = FactRatings[FactRatings['movieid'].isin(DimMovie['movieid'])]
 
-FactRatings, DimMovie, DimUser = load_data()
+    return FactRatings, DimMovie
+
+FactRatings, DimMovie = load_data()
 
 # -----------------------------
 # BUILD MODELS
@@ -33,14 +35,8 @@ FactRatings, DimMovie, DimUser = load_data()
 @st.cache_data
 def build_models(FactRatings, DimMovie):
 
-    # 🔥 LIMIT SIZE (VERY IMPORTANT)
-    DimMovie_small = DimMovie.head(1000)
-    FactRatings_small = FactRatings[
-        FactRatings['movieid'].isin(DimMovie_small['movieid'])
-    ]
-
-    # USER MODEL
-    user_movie_matrix = FactRatings_small.pivot_table(
+    # USER MATRIX
+    user_movie_matrix = FactRatings.pivot_table(
         index='userid',
         columns='movieid',
         values='rating',
@@ -49,35 +45,35 @@ def build_models(FactRatings, DimMovie):
 
     user_similarity = cosine_similarity(user_movie_matrix)
 
-    # CONTENT MODEL (SAFE)
-    count = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
-
-    genre_matrix = count.fit_transform(DimMovie_small['genres'].fillna(""))
+    # CONTENT MODEL
+    vectorizer = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
+    genre_matrix = vectorizer.fit_transform(DimMovie['genres'].fillna(""))
 
     cosine_sim = cosine_similarity(genre_matrix)
 
-    return user_movie_matrix, user_similarity, cosine_sim, DimMovie_small
+    return user_movie_matrix, user_similarity, cosine_sim
+
+# 🔥 CALL MODEL (YOU MISSED THIS BEFORE)
+user_movie_matrix, user_similarity, cosine_sim = build_models(FactRatings, DimMovie)
+
 # -----------------------------
-# HELPER: DISPLAY MOVIES
+# DISPLAY FUNCTION
 # -----------------------------
 def display_movies(df):
     for _, row in df.iterrows():
         st.markdown(f"""
         <div style="background:#262730;padding:10px;border-radius:10px;margin-bottom:10px">
             <h4>{row['title']}</h4>
-            <p>⭐ Rating: {round(row.get('avgrating', 0),2)}</p>
-            <p>🎭 Genre: {row['genres']}</p>
-            <p>📅 Year: {row['year']}</p>
-            <p>📺 Platform: {row['platform']}</p>
+            <p>🎭 {row['genres']}</p>
+            <p>📅 {row['year']} | 📺 {row['platform']}</p>
         </div>
         """, unsafe_allow_html=True)
 
 # -----------------------------
-# RECOMMENDATION FUNCTIONS
+# RECOMMEND BY MOVIE
 # -----------------------------
+def recommend_movie(movie_name, top_n):
 
-# 🎬 CONTENT-BASED
-def recommend_movie(movie_name, top_n=5):
     matches = DimMovie[DimMovie['title'].str.lower() == movie_name.lower()]
 
     if matches.empty:
@@ -88,36 +84,51 @@ def recommend_movie(movie_name, top_n=5):
     sim_scores = list(enumerate(cosine_sim[idx]))
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:top_n+1]
 
-    movie_indices = [i[0] for i in sim_scores]
-    return DimMovie.iloc[movie_indices]
+    indices = [i[0] for i in sim_scores]
 
+    return DimMovie.iloc[indices]
 
-# 👤 COLLABORATIVE
-def recommend_user(user_id, top_n=5):
+# -----------------------------
+# RECOMMEND BY USER (FAST FIX)
+# -----------------------------
+def recommend_user(user_id, top_n):
 
     if user_id not in user_movie_matrix.index:
         return None
 
-    user_idx = list(user_movie_matrix.index).index(user_id)
-    sim_scores = user_similarity[user_idx]
+    user_idx = user_movie_matrix.index.get_loc(user_id)
 
-    user_ratings = user_movie_matrix.iloc[user_idx]
-    unrated_movies = user_ratings[user_ratings == 0].index
+    # 🔥 Only top similar users (prevents crash)
+    sim_scores = list(enumerate(user_similarity[user_idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
 
-    scores = {
-        movie: sim_scores @ user_movie_matrix[movie] / (sim_scores.sum() + 1e-8)
-        for movie in unrated_movies
-    }
+    similar_users = [user_movie_matrix.index[i[0]] for i in sim_scores]
 
-    recommended_ids = sorted(scores, key=scores.get, reverse=True)[:top_n]
+    # Aggregate ratings from similar users
+    similar_data = user_movie_matrix.loc[similar_users]
+
+    scores = similar_data.mean().sort_values(ascending=False)
+
+    # Remove already watched
+    watched = user_movie_matrix.loc[user_id]
+    scores = scores[watched == 0]
+
+    recommended_ids = scores.head(top_n).index
 
     return DimMovie[DimMovie['movieid'].isin(recommended_ids)]
 
+# -----------------------------
+# TOP MOVIES
+# -----------------------------
+def top_movies(top_n):
 
-# ⭐ TOP MOVIES
-def top_movies(top_n=5):
-    return DimMovie.sort_values(by='avgrating', ascending=False).head(top_n)
+    stats = FactRatings.groupby('movieid')['rating'].mean().reset_index()
+    stats.columns = ['movieid', 'avgrating']
 
+    merged = DimMovie.merge(stats, on='movieid', how='left')
+    merged['avgrating'] = merged['avgrating'].fillna(0)
+
+    return merged.sort_values(by='avgrating', ascending=False).head(top_n)
 
 # -----------------------------
 # SIDEBAR
@@ -128,13 +139,13 @@ choice = st.sidebar.radio(
     ["Movie Based", "User Based", "Top Rated"]
 )
 
-top_n = st.sidebar.slider("Number of recommendations", 3, 15, 5)
+top_n = st.sidebar.slider("Number of recommendations", 3, 10, 5)
 
 # -----------------------------
-# UI LOGIC
+# UI
 # -----------------------------
 
-# 🎬 MOVIE BASED
+# 🎬 MOVIE
 if choice == "Movie Based":
     movie_name = st.text_input("Enter movie name")
 
@@ -142,12 +153,11 @@ if choice == "Movie Based":
         results = recommend_movie(movie_name, top_n)
 
         if results is None:
-            st.error("Movie not found!")
+            st.error("Movie not found")
         else:
-            st.subheader("🎥 Similar Movies")
             display_movies(results)
 
-# 👤 USER BASED
+# 👤 USER
 elif choice == "User Based":
     user_id = st.number_input("Enter User ID", min_value=1, step=1)
 
@@ -155,14 +165,12 @@ elif choice == "User Based":
         results = recommend_user(user_id, top_n)
 
         if results is None:
-            st.error("User not found!")
+            st.error("User not found")
         else:
-            st.subheader("👤 Recommended for You")
             display_movies(results)
 
-# ⭐ TOP MOVIES
-elif choice == "Top Rated":
+# ⭐ TOP
+else:
     if st.button("Show Top Movies"):
         results = top_movies(top_n)
-        st.subheader("⭐ Top Rated Movies")
         display_movies(results)
