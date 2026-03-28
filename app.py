@@ -171,7 +171,7 @@ def recommend_user(user_id, top_n=5):
 
 
 def top_movies(top_n=5):
-    return DimMovie_small.sort_values(by='avgrating', ascending=False).head(top_n)
+    return DimMovie_small.sort_values(by='avgRating', ascending=False).head(top_n)
 
 # -----------------------------
 # SIDEBAR OPTIONS
