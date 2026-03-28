@@ -15,7 +15,7 @@ theme = st.sidebar.radio("Theme", ["Dark", "Light"])
 
 if theme == "Dark":
     bg_color = "#0E1117"
-    card_color = "#262730"
+    card_color = "red"
     text_color = "white"
 else:
     bg_color = "#FFFFFF"
