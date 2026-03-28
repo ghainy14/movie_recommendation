@@ -4,55 +4,40 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 
 # -----------------------------
-# PAGE CONFIG
+# CONFIG
 # -----------------------------
 st.set_page_config(page_title="🎬 Smart Movie Recommender", layout="wide")
 
 # -----------------------------
-# THEME TOGGLE
+# THEME SWITCH
 # -----------------------------
-theme = st.sidebar.radio("Theme", ["Dark", "Light"])
+theme = st.sidebar.radio("Choose Theme", ["Dark", "Light"])
 
 if theme == "Dark":
     bg_color = "#0E1117"
-    card_color = "red"
+    card_color = "#262730"
     text_color = "white"
 else:
-    bg_color = "#FFFFFF"
-    card_color = "#F5F5F5"
+    bg_color = "#F5F5F5"
+    card_color = "#FFFFFF"
     text_color = "black"
 
-# -----------------------------
-# CUSTOM CSS (FIX BUTTON COLOR)
-# -----------------------------
+# Apply theme
 st.markdown(f"""
-<style>
-.stApp {{
-    background-color: {bg_color};
-    color: {text_color};
-}}
-
-h1 {{
-    text-align: center;
-    color: #FF4B4B;
-}}
-
-.stButton>button {{
-    background-color: #FF4B4B !important;
-    color: white !important;
-    border-radius: 10px;
-    height: 3em;
-    width: 100%;
-    font-size: 16px;
-}}
-
-.movie-card {{
-    background-color: {card_color};
-    padding: 12px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-}}
-</style>
+    <style>
+    .stApp {{
+        background-color: {bg_color};
+        color: {text_color};
+    }}
+    .movie-card {{
+        background-color: {card_color};
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        color: {text_color};
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
+    }}
+    </style>
 """, unsafe_allow_html=True)
 
 st.title("🎬 Smart Movie Recommender System")
@@ -65,29 +50,24 @@ def load_data():
     FactRatings = pd.read_csv("FactRatings.csv")
     DimMovie = pd.read_csv("DimMovie.csv")
 
-    # Normalize columns (CRITICAL FIX)
     FactRatings.columns = FactRatings.columns.str.strip().str.lower()
     DimMovie.columns = DimMovie.columns.str.strip().str.lower()
+
+    # Limit size (prevent crash)
+    DimMovie = DimMovie.head(600)
+    FactRatings = FactRatings[FactRatings['movieid'].isin(DimMovie['movieid'])]
 
     return FactRatings, DimMovie
 
 FactRatings, DimMovie = load_data()
 
 # -----------------------------
-# BUILD MODELS (LIGHTWEIGHT)
+# BUILD MODELS
 # -----------------------------
 @st.cache_data
 def build_models(FactRatings, DimMovie):
 
-    # 🔥 Reduce size to prevent crash
-    DimMovie_small = DimMovie.head(800)
-
-    FactRatings_small = FactRatings[
-        FactRatings['movieid'].isin(DimMovie_small['movieid'])
-    ]
-
-    # USER MODEL
-    user_movie_matrix = FactRatings_small.pivot_table(
+    user_movie_matrix = FactRatings.pivot_table(
         index='userid',
         columns='movieid',
         values='rating',
@@ -96,43 +76,34 @@ def build_models(FactRatings, DimMovie):
 
     user_similarity = cosine_similarity(user_movie_matrix)
 
-    # CONTENT MODEL
-    count = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
-
-    genre_matrix = count.fit_transform(
-        DimMovie_small['genres'].fillna("")
-    )
+    vectorizer = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
+    genre_matrix = vectorizer.fit_transform(DimMovie['genres'].fillna(""))
 
     cosine_sim = cosine_similarity(genre_matrix)
 
-    return user_movie_matrix, user_similarity, cosine_sim, DimMovie_small
+    return user_movie_matrix, user_similarity, cosine_sim
 
-
-user_movie_matrix, user_similarity, cosine_sim, DimMovie_small = build_models(FactRatings, DimMovie)
+user_movie_matrix, user_similarity, cosine_sim = build_models(FactRatings, DimMovie)
 
 # -----------------------------
-# DISPLAY FUNCTION
+# DISPLAY
 # -----------------------------
 def display_movies(df):
     for _, row in df.iterrows():
         st.markdown(f"""
         <div class="movie-card">
             <h4>{row['title']}</h4>
-            <p>⭐ Rating: {round(row.get('avgrating', 0),2)}</p>
-            <p>🎭 Genre: {row['genres']}</p>
-            <p>📅 Year: {row.get('year','N/A')}</p>
-            <p>📺 Platform: {row.get('platform','N/A')}</p>
+            <p><b>🎭 Genre:</b> {row['genres']}</p>
+            <p><b>📅 Year:</b> {row['year']}</p>
+            <p><b>📺 Platform:</b> {row['platform']}</p>
         </div>
         """, unsafe_allow_html=True)
 
 # -----------------------------
-# RECOMMEND FUNCTIONS
+# FUNCTIONS
 # -----------------------------
-def recommend_movie(movie_name, top_n=5):
-
-    matches = DimMovie_small[
-        DimMovie_small['title'] == movie_name
-    ]
+def recommend_movie(movie_name, top_n):
+    matches = DimMovie[DimMovie['title'] == movie_name]
 
     if matches.empty:
         return None
@@ -142,36 +113,40 @@ def recommend_movie(movie_name, top_n=5):
     sim_scores = list(enumerate(cosine_sim[idx]))
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:top_n+1]
 
-    movie_indices = [i[0] for i in sim_scores]
+    indices = [i[0] for i in sim_scores]
+    return DimMovie.iloc[indices]
 
-    return DimMovie_small.iloc[movie_indices]
 
-
-def recommend_user(user_id, top_n=5):
-
+def recommend_user(user_id, top_n):
     if user_id not in user_movie_matrix.index:
         return None
 
-    user_idx = list(user_movie_matrix.index).index(user_id)
-    sim_scores = user_similarity[user_idx]
+    user_idx = user_movie_matrix.index.get_loc(user_id)
 
-    user_ratings = user_movie_matrix.iloc[user_idx]
-    unrated_movies = user_ratings[user_ratings == 0].index
+    sim_scores = list(enumerate(user_similarity[user_idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
 
-    scores = {
-        movie: sim_scores @ user_movie_matrix[movie] / (sim_scores.sum() + 1e-8)
-        for movie in unrated_movies
-    }
+    similar_users = [user_movie_matrix.index[i[0]] for i in sim_scores]
 
-    recommended_ids = sorted(scores, key=scores.get, reverse=True)[:top_n]
+    similar_data = user_movie_matrix.loc[similar_users]
+    scores = similar_data.mean().sort_values(ascending=False)
 
-    return DimMovie_small[
-        DimMovie_small['movieid'].isin(recommended_ids)
-    ]
+    watched = user_movie_matrix.loc[user_id]
+    scores = scores[watched == 0]
+
+    recommended_ids = scores.head(top_n).index
+
+    return DimMovie[DimMovie['movieid'].isin(recommended_ids)]
 
 
-def top_movies(top_n=5):
-    return DimMovie_small.sort_values(by='avgRating', ascending=False).head(top_n)
+def top_movies(top_n):
+    stats = FactRatings.groupby('movieid')['rating'].mean().reset_index()
+    stats.columns = ['movieid', 'avgrating']
+
+    merged = DimMovie.merge(stats, on='movieid', how='left')
+    merged['avgrating'] = merged['avgrating'].fillna(0)
+
+    return merged.sort_values(by='avgrating', ascending=False).head(top_n)
 
 # -----------------------------
 # SIDEBAR OPTIONS
@@ -183,20 +158,19 @@ choice = st.sidebar.radio(
     ["Movie Based", "User Based", "Top Rated"]
 )
 
-top_n = st.sidebar.slider("Number of movies", 3, 15, 5)
+top_n = st.sidebar.slider("Number of recommendations", 3, 10, 5)
 
 # -----------------------------
-# UI
+# UI LOGIC
 # -----------------------------
 
-# 🎬 MOVIE BASED (DROPDOWN FIXED)
+# 🎬 MOVIE DROPDOWN
 if choice == "Movie Based":
 
-    movie_list = DimMovie_small['title'].dropna().unique()
-
+    movie_list = sorted(DimMovie['title'].dropna().unique())
     selected_movie = st.selectbox("Select a movie", movie_list)
 
-    if st.button("Recommend Movies"):
+    if st.button("Recommend"):
         results = recommend_movie(selected_movie, top_n)
 
         if results is None:
@@ -205,22 +179,23 @@ if choice == "Movie Based":
             st.subheader("🎥 Similar Movies")
             display_movies(results)
 
-# 👤 USER BASED
+# 👤 USER
 elif choice == "User Based":
 
     user_id = st.number_input("Enter User ID", min_value=1, step=1)
 
-    if st.button("Recommend For User"):
+    if st.button("Recommend"):
         results = recommend_user(user_id, top_n)
 
         if results is None:
             st.error("User not found")
         else:
-            st.subheader("👤 Recommended Movies")
+            st.subheader("👤 Recommended for You")
             display_movies(results)
 
-# ⭐ TOP MOVIES
+# ⭐ TOP
 else:
+
     if st.button("Show Top Movies"):
         results = top_movies(top_n)
         st.subheader("⭐ Top Rated Movies")
