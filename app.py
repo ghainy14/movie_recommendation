@@ -229,9 +229,9 @@ elif view == "Admin ETL Dashboard":
     st.header("1. Extract")
 
     try:
-        movies = pd.read_csv("movies.csv")
+        movies = pd.read_csv("movies_updated.csv")
         ratings = pd.read_csv("ratings.csv")
-        users = pd.read_csv("users.csv")
+        users = pd.read_csv("user.csv")
 
         st.success("Raw datasets loaded successfully.")
         st.write(f"Movies shape: {movies.shape}")
