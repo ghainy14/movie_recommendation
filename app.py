@@ -22,12 +22,16 @@ else:
     card_color = "#FFFFFF"
     text_color = "black"
 
+
 st.markdown(f"""
 <style>
+/* App background */
 .stApp {{
     background-color: {bg_color};
     color: {text_color};
 }}
+
+/* Movie cards */
 .movie-card {{
     background-color: {card_color};
     padding: 15px;
@@ -36,10 +40,44 @@ st.markdown(f"""
     color: {text_color};
     box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
 }}
+
+/* Labels (like movieid, title, etc.) */
+label, .stTextInput label, .stSelectbox label, .stNumberInput label {{
+    color: {text_color} !important;
+    font-weight: 600;
+}}
+
+/* Input fields */
+input, textarea {{
+    color: {text_color} !important;
+    background-color: {card_color} !important;
+}}
+
+/* Dropdown (selectbox) */
+div[data-baseweb="select"] > div {{
+    background-color: {card_color} !important;
+    color: {text_color} !important;
+}}
+
+/* Dropdown text */
+div[data-baseweb="select"] span {{
+    color: {text_color} !important;
+}}
+
+/* Buttons */
+.stButton button {{
+    color: {text_color};
+    background-color: {card_color};
+    border: 1px solid gray;
+}}
+
+/* Sidebar text */
+section[data-testid="stSidebar"] * {{
+    color: {text_color} !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 Smart Movie Recommender System")
 
 # -----------------------------
 # LOAD DATA
