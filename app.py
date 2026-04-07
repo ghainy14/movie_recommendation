@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-#from sqlalchemy import create_engine
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -17,163 +16,145 @@ theme = st.sidebar.radio("Choose Theme", ["Dark", "Light"])
 if theme == "Dark":
     bg_color = "#0E1117"
     card_color = "#262730"
-    text_color = "red"
+    text_color = "white"
 else:
     bg_color = "#F5F5F5"
     card_color = "#FFFFFF"
     text_color = "black"
 
-# Apply theme
 st.markdown(f"""
-    <style>
-    .stApp {{
-        background-color: {bg_color};
-        color: {text_color};
-    }}
-    .movie-card {{
-        background-color: {card_color};
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        color: {text_color};
-        box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
-    }}
-    </style>
+<style>
+.stApp {{
+    background-color: {bg_color};
+    color: {text_color};
+}}
+.movie-card {{
+    background-color: {card_color};
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    color: {text_color};
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
+}}
+</style>
 """, unsafe_allow_html=True)
 
-# -----------------------------
-# HELPER FUNCTION
-# -----------------------------
-def assign_platform(genre):
-    if pd.isna(genre):
-        return 'Netflix'
-    elif 'Animation' in genre or 'Children' in genre:
-        return 'Disney+'
-    elif 'Action' in genre or 'Thriller' in genre:
-        return 'Amazon Prime'
-    elif 'Comedy' in genre:
-        return 'Netflix'
-    else:
-        return 'Hulu'
+st.title("🎬 Smart Movie Recommender System")
 
 # -----------------------------
-# NAVIGATION
+# LOAD DATA
 # -----------------------------
-view = st.sidebar.radio("Select View", ["User Recommendation", "Admin ETL Dashboard"])
+@st.cache_data
+def load_data():
+    FactRatings = pd.read_csv("FactRatings.csv")
+    DimMovie = pd.read_csv("DimMovie.csv")
 
-# =========================================================
-# USER RECOMMENDATION VIEW
-# =========================================================
-if view == "User Recommendation":
-    st.title("🎬 Smart Movie Recommender System")
+    FactRatings.columns = FactRatings.columns.str.strip().str.lower()
+    DimMovie.columns = DimMovie.columns.str.strip().str.lower()
 
-    # -----------------------------
-    # LOAD DATA
-    # -----------------------------
-    @st.cache_data
-    def load_data():
-        fact_ratings = pd.read_csv("FactRatings.csv")
-        dim_movie = pd.read_csv("DimMovie.csv")
+    DimMovie = DimMovie.head(600)
+    FactRatings = FactRatings[FactRatings['movieid'].isin(DimMovie['movieid'])]
 
-        fact_ratings.columns = fact_ratings.columns.str.strip().str.lower()
-        dim_movie.columns = dim_movie.columns.str.strip().str.lower()
+    return FactRatings, DimMovie
 
-        # Limit size (prevent crash)
-        dim_movie = dim_movie.head(600)
-        fact_ratings = fact_ratings[fact_ratings['movieid'].isin(dim_movie['movieid'])]
+FactRatings, DimMovie = load_data()
 
-        return fact_ratings, dim_movie
+# -----------------------------
+# BUILD MODELS
+# -----------------------------
+@st.cache_data
+def build_models(FactRatings, DimMovie):
 
-    FactRatings, DimMovie = load_data()
+    user_movie_matrix = FactRatings.pivot_table(
+        index='userid',
+        columns='movieid',
+        values='rating',
+        fill_value=0
+    )
 
-    # -----------------------------
-    # BUILD MODELS
-    # -----------------------------
-    @st.cache_data
-    def build_models(FactRatings, DimMovie):
-        user_movie_matrix = FactRatings.pivot_table(
-            index='userid',
-            columns='movieid',
-            values='rating',
-            fill_value=0
-        )
+    user_similarity = cosine_similarity(user_movie_matrix)
 
-        user_similarity = cosine_similarity(user_movie_matrix)
+    vectorizer = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
+    genre_matrix = vectorizer.fit_transform(DimMovie['genres'].fillna(""))
 
-        vectorizer = CountVectorizer(token_pattern=None, tokenizer=lambda x: x.split('|'))
-        genre_matrix = vectorizer.fit_transform(DimMovie['genres'].fillna(""))
+    cosine_sim = cosine_similarity(genre_matrix)
 
-        cosine_sim = cosine_similarity(genre_matrix)
+    return user_movie_matrix, user_similarity, cosine_sim
 
-        return user_movie_matrix, user_similarity, cosine_sim
+user_movie_matrix, user_similarity, cosine_sim = build_models(FactRatings, DimMovie)
 
-    user_movie_matrix, user_similarity, cosine_sim = build_models(FactRatings, DimMovie)
+# -----------------------------
+# DISPLAY FUNCTION
+# -----------------------------
+def display_movies(df):
+    for _, row in df.iterrows():
+        st.markdown(f"""
+        <div class="movie-card">
+            <h4>{row['title']}</h4>
+            <p><b>🎭 Genre:</b> {row['genres']}</p>
+            <p><b>📅 Year:</b> {row['year']}</p>
+            <p><b>📺 Platform:</b> {row['platform']}</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # -----------------------------
-    # DISPLAY
-    # -----------------------------
-    def display_movies(df):
-        for _, row in df.iterrows():
-            st.markdown(f"""
-            <div class="movie-card">
-                <h4>{row['title']}</h4>
-                <p><b>🎭 Genre:</b> {row['genres']}</p>
-                <p><b>📅 Year:</b> {row['year']}</p>
-                <p><b>📺 Platform:</b> {row['platform']}</p>
-            </div>
-            """, unsafe_allow_html=True)
+# -----------------------------
+# RECOMMENDATION FUNCTIONS
+# -----------------------------
+def recommend_movie(movie_name, top_n):
+    matches = DimMovie[DimMovie['title'] == movie_name]
+    if matches.empty:
+        return None
 
-    # -----------------------------
-    # FUNCTIONS
-    # -----------------------------
-    def recommend_movie(movie_name, top_n):
-        matches = DimMovie[DimMovie['title'] == movie_name]
+    idx = matches.index[0]
+    sim_scores = list(enumerate(cosine_sim[idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:top_n+1]
 
-        if matches.empty:
-            return None
+    indices = [i[0] for i in sim_scores]
+    return DimMovie.iloc[indices]
 
-        idx = matches.index[0]
 
-        sim_scores = list(enumerate(cosine_sim[idx]))
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:top_n+1]
+def recommend_user(user_id, top_n):
+    if user_id not in user_movie_matrix.index:
+        return None
 
-        indices = [i[0] for i in sim_scores]
-        return DimMovie.iloc[indices]
+    user_idx = user_movie_matrix.index.get_loc(user_id)
 
-    def recommend_user(user_id, top_n):
-        if user_id not in user_movie_matrix.index:
-            return None
+    sim_scores = list(enumerate(user_similarity[user_idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
 
-        user_idx = user_movie_matrix.index.get_loc(user_id)
+    similar_users = [user_movie_matrix.index[i[0]] for i in sim_scores]
 
-        sim_scores = list(enumerate(user_similarity[user_idx]))
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
+    similar_data = user_movie_matrix.loc[similar_users]
+    scores = similar_data.mean().sort_values(ascending=False)
 
-        similar_users = [user_movie_matrix.index[i[0]] for i in sim_scores]
+    watched = user_movie_matrix.loc[user_id]
+    scores = scores[watched == 0]
 
-        similar_data = user_movie_matrix.loc[similar_users]
-        scores = similar_data.mean().sort_values(ascending=False)
+    recommended_ids = scores.head(top_n).index
 
-        watched = user_movie_matrix.loc[user_id]
-        scores = scores[watched == 0]
+    return DimMovie[DimMovie['movieid'].isin(recommended_ids)]
 
-        recommended_ids = scores.head(top_n).index
 
-        return DimMovie[DimMovie['movieid'].isin(recommended_ids)]
+def top_movies(top_n):
+    stats = FactRatings.groupby('movieid')['rating'].mean().reset_index()
+    stats.columns = ['movieid', 'avgrating']
 
-    def top_movies(top_n):
-        stats = FactRatings.groupby('movieid')['rating'].mean().reset_index()
-        stats.columns = ['movieid', 'avgrating']
+    merged = DimMovie.merge(stats, on='movieid', how='left')
+    merged['avgrating'] = merged['avgrating'].fillna(0)
 
-        merged = DimMovie.merge(stats, on='movieid', how='left')
-        merged['avgrating'] = merged['avgrating'].fillna(0)
+    return merged.sort_values(by='avgrating', ascending=False).head(top_n)
 
-        return merged.sort_values(by='avgrating', ascending=False).head(top_n)
+# -----------------------------
+# MODE SWITCH
+# -----------------------------
+mode = st.sidebar.radio("Mode", ["User", "Admin"])
 
-    # -----------------------------
-    # SIDEBAR OPTIONS
-    # -----------------------------
-    st.sidebar.header("Recommendation Options")
+# =============================
+# USER MODE
+# =============================
+if mode == "User":
+
+    st.sidebar.header("Options")
 
     choice = st.sidebar.radio(
         "Recommendation Type",
@@ -182,16 +163,12 @@ if view == "User Recommendation":
 
     top_n = st.sidebar.slider("Number of recommendations", 3, 10, 5)
 
-    # -----------------------------
-    # UI LOGIC
-    # -----------------------------
     if choice == "Movie Based":
         movie_list = sorted(DimMovie['title'].dropna().unique())
         selected_movie = st.selectbox("Select a movie", movie_list)
 
         if st.button("Recommend"):
             results = recommend_movie(selected_movie, top_n)
-
             if results is None:
                 st.error("Movie not found")
             else:
@@ -203,7 +180,6 @@ if view == "User Recommendation":
 
         if st.button("Recommend"):
             results = recommend_user(user_id, top_n)
-
             if results is None:
                 st.error("User not found")
             else:
@@ -216,127 +192,93 @@ if view == "User Recommendation":
             st.subheader("⭐ Top Rated Movies")
             display_movies(results)
 
-# =========================================================
-# ADMIN ETL DASHBOARD
-# =========================================================
-elif view == "Admin ETL Dashboard":
-    st.title("🛠️ Admin ETL Dashboard")
-    st.write("This panel demonstrates the ETL process: Extract, Transform, and Load.")
+# =============================
+# ADMIN MODE (ETL)
+# =============================
+else:
 
-    # -----------------------------
+    st.header("🛠️ Admin ETL Panel")
+
+    etl_option = st.selectbox(
+        "Choose Operation",
+        ["Extract", "Transform", "Load"]
+    )
+
+    # -------------------------
     # EXTRACT
-    # -----------------------------
-    st.header("1. Extract")
+    # -------------------------
+    if etl_option == "Extract":
 
-    try:
-        movies = pd.read_csv("movies_updated.csv")
-        ratings = pd.read_csv("ratings.csv")
-        users = pd.read_csv("user.csv")
+        st.subheader("📤 Extract Data")
 
-        st.success("Raw datasets loaded successfully.")
-        st.write(f"Movies shape: {movies.shape}")
-        st.write(f"Ratings shape: {ratings.shape}")
-        st.write(f"Users shape: {users.shape}")
+        table = st.selectbox("Select Table", ["DimMovie", "FactRatings"])
+        df = DimMovie if table == "DimMovie" else FactRatings
 
-        with st.expander("Preview Raw Movies Data"):
-            st.dataframe(movies.head())
+        st.dataframe(df)
 
-        with st.expander("Preview Raw Ratings Data"):
-            st.dataframe(ratings.head())
+        query = st.text_input("Optional Query (e.g. year > 2015)")
 
-        with st.expander("Preview Raw Users Data"):
-            st.dataframe(users.head())
+        if query:
+            try:
+                filtered = df.query(query)
+                st.dataframe(filtered)
+            except:
+                st.error("Invalid query")
 
-    except Exception as e:
-        st.error(f"Error loading raw data files: {e}")
-        st.stop()
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("Download CSV", csv, "data.csv", "text/csv")
 
-    # -----------------------------
+    # -------------------------
     # TRANSFORM
-    # -----------------------------
-    st.header("2. Transform")
+    # -------------------------
+    elif etl_option == "Transform":
 
-    try:
-        # Movies transformation
-        movies['year'] = movies['title'].str.extract(r'\((\d{4})\)')
-        movies['year'] = pd.to_numeric(movies['year'], errors='coerce')
-        movies['platform'] = movies['genres'].apply(assign_platform)
+        st.subheader("🔄 Transform Data")
 
-        # Ratings transformation
-        ratings['timestamp'] = pd.to_numeric(ratings['timestamp'], errors='coerce')
-        ratings['datetime'] = pd.to_datetime(ratings['timestamp'], unit='s', errors='coerce')
-        ratings['hour'] = ratings['datetime'].dt.hour
-        ratings['day'] = ratings['datetime'].dt.day
-        ratings['month'] = ratings['datetime'].dt.month
-        ratings['year'] = ratings['datetime'].dt.year
+        table = st.selectbox("Select Table", ["DimMovie", "FactRatings"])
+        df = DimMovie if table == "DimMovie" else FactRatings
 
-        st.success("Transformation completed successfully.")
+        column = st.selectbox("Column", df.columns)
+        condition = st.text_input("Condition (e.g. year < 2000)")
+        new_value = st.text_input("New Value")
 
-        with st.expander("Preview Transformed Movies Data"):
-            st.dataframe(movies[['movieId', 'title', 'genres', 'year', 'platform']].head())
+        if st.button("Apply Transformation"):
+            try:
+                df.loc[df.query(condition).index, column] = new_value
+                st.success("Transformation Applied")
+                st.dataframe(df.head())
+            except:
+                st.error("Error in transformation")
 
-        with st.expander("Preview Transformed Ratings Data"):
-            st.dataframe(
-                ratings[['userId', 'movieId', 'rating', 'timestamp', 'datetime', 'hour', 'day', 'month', 'year']].head()
-            )
-
-    except Exception as e:
-        st.error(f"Error during transformation: {e}")
-        st.stop()
-
-    # -----------------------------
+    # -------------------------
     # LOAD
-    # -----------------------------
-    st.header("3. Load")
+    # -------------------------
+    elif etl_option == "Load":
 
-    try:
-        DimMovie = movies[['movieId', 'title', 'genres', 'year', 'platform']].drop_duplicates()
-        DimUser = users[['userId', 'age', 'gender', 'occupation', 'zip']].drop_duplicates()
+        st.subheader("📥 Load Data")
 
-        DimTime = ratings[['timestamp', 'datetime', 'hour', 'day', 'month', 'year']].drop_duplicates().reset_index(drop=True)
-        DimTime['timeId'] = DimTime.index + 1
-        DimTime = DimTime[['timeId', 'timestamp', 'datetime', 'hour', 'day', 'month', 'year']]
+        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
-        FactRatings = ratings.merge(
-            DimTime[['timeId', 'timestamp']],
-            on='timestamp',
-            how='left'
-        )[['userId', 'movieId', 'timeId', 'rating']]
+        if uploaded_file:
+            new_data = pd.read_csv(uploaded_file)
+            st.dataframe(new_data.head())
 
-        # Save warehouse CSV files
-        DimMovie.to_csv("DimMovie.csv", index=False)
-        DimUser.to_csv("DimUser.csv", index=False)
-        DimTime.to_csv("DimTime.csv", index=False)
-        FactRatings.to_csv("FactRatings.csv", index=False)
+            table = st.selectbox("Insert into", ["DimMovie", "FactRatings"])
 
-        # Save to SQLite
-        engine = create_engine("sqlite:///movie_warehouse.db")
-        DimMovie.to_sql("DimMovie", engine, if_exists="replace", index=False)
-        DimUser.to_sql("DimUser", engine, if_exists="replace", index=False)
-        DimTime.to_sql("DimTime", engine, if_exists="replace", index=False)
-        FactRatings.to_sql("FactRatings", engine, if_exists="replace", index=False)
+            if st.button("Insert Data"):
+                if table == "DimMovie":
+                    DimMovie = pd.concat([DimMovie, new_data], ignore_index=True)
+                else:
+                    FactRatings = pd.concat([FactRatings, new_data], ignore_index=True)
 
-        st.success("Warehouse tables loaded successfully into CSV files and SQLite database.")
+                st.success("Data Loaded Successfully")
 
-        st.subheader("Warehouse Table Shapes")
-        st.write(f"DimMovie: {DimMovie.shape}")
-        st.write(f"DimUser: {DimUser.shape}")
-        st.write(f"DimTime: {DimTime.shape}")
-        st.write(f"FactRatings: {FactRatings.shape}")
+        st.subheader("Manual Insert")
 
-        with st.expander("Preview DimMovie"):
-            st.dataframe(DimMovie.head())
+        new_row = {}
+        for col in DimMovie.columns:
+            new_row[col] = st.text_input(f"{col}")
 
-        with st.expander("Preview DimUser"):
-            st.dataframe(DimUser.head())
-
-        with st.expander("Preview DimTime"):
-            st.dataframe(DimTime.head())
-
-        with st.expander("Preview FactRatings"):
-            st.dataframe(FactRatings.head())
-
-        st.success("✅ ETL process completed successfully.")
-
-    except Exception as e:
-        st.error(f"Error during loading phase: {e}")
+        if st.button("Insert Row"):
+            DimMovie = pd.concat([DimMovie, pd.DataFrame([new_row])], ignore_index=True)
+            st.success("Row Inserted")
