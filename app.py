@@ -20,7 +20,7 @@ if theme == "Dark":
 else:
     bg_color = "#F5F5F5"
     card_color = "#FFFFFF"
-    text_color = "black"
+    text_color = "red"
 
 
 st.markdown(f"""
