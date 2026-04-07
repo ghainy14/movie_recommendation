@@ -19,7 +19,7 @@ if theme == "Dark":
     text_color = "red"
 else:
     bg_color = "#F5F5F5"
-    card_color = "#262730"
+    card_color = "#2627"
     text_color = "black"
 
 
