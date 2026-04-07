@@ -14,7 +14,7 @@ st.set_page_config(page_title="🎬 Smart Movie Recommender", layout="wide")
 theme = st.sidebar.radio("Choose Theme", ["Dark", "Light"])
 
 if theme == "Dark":
-    bg_color = "#0E1117"
+    bg_color = "#0E117"
     card_color = "#262730"
     text_color = "red"
 else:
